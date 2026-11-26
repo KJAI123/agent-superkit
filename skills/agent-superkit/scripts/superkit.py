@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -26,16 +27,21 @@ STATE = HOME / ".local/share" / NAME
 MARKER = ".agent-superkit-install.json"
 MAC = platform.system() == "Darwin"
 BRIDGE = HOME / ".kimi-webbridge/bin/kimi-webbridge"
+GITHUB_REPO = "https://github.com/KJAI123/agent-superkit.git"
+SOURCE_RECEIPT = STATE / "github-source.json"
+
 
 def emit(value):
     print(json.dumps(value, ensure_ascii=False, indent=2))
 
 
-def package_files():
-    paths = [ROOT / "SKILL.md", ROOT / "extensions.json"]
-    paths.extend(sorted((ROOT / "references").glob("*.md")))
-    paths.extend(sorted(p for p in (ROOT / "scripts").iterdir() if p.suffix in {".py", ".swift"}))
-    return {str(p.relative_to(ROOT)): p.read_bytes() for p in paths}
+def package_files(root):
+    paths = [root / "SKILL.md", root / "extensions.json"]
+    paths.extend(sorted((root / "references").glob("*.md")))
+    paths.extend(sorted(p for p in (root / "scripts").iterdir() if p.suffix in {".py", ".swift"}))
+    if any(p.is_symlink() or not p.resolve().is_relative_to(root) for p in paths):
+        raise ValueError("The skill bundle must contain only its own regular files")
+    return {str(p.relative_to(root)): p.read_bytes() for p in paths}
 
 
 def hashes(files):
@@ -92,7 +98,7 @@ def install_copy(parent, files, expected, name=NAME):
     return target, "installed"
 
 
-def skill_roots(args):
+def skill_roots(args, previous_roots=()):
     candidates = [
         HOME / ".config/opencode/skills",
         HOME / ".zcode/skills",
@@ -104,6 +110,7 @@ def skill_roots(args):
         HOME / "Library/Application Support/office-raccoon/agent/skills",
     ]
     roots = [HOME / ".codex/skills", HOME / ".agents/skills", *(p for p in candidates if p.is_dir())]
+    roots.extend(Path(path) for path in previous_roots)
     if args.registry:
         registry = json.loads(args.registry.read_text())
         for entry in registry["platforms"].values():
@@ -139,13 +146,13 @@ def install_cli(engine, name=NAME):
     return cli
 
 
-def install(args):
-    files = package_files()
+def install(args, bundle=ROOT, release=None, previous_roots=()):
+    files = package_files(bundle)
     expected = hashes(files)
     router_files = {"SKILL.md": files["references/ai-tool-router.skill.md"],
                     "ai_tool_router.py": files["scripts/ai_tool_router.py"]}
     router_expected = hashes(router_files)
-    roots = skill_roots(args)
+    roots = skill_roots(args, previous_roots)
     router_engine = STATE / ROUTER / "ai_tool_router.py"
     with install_lock():
         # Keep the runtime separate from paths the agents may re-index or manage.
@@ -177,8 +184,13 @@ def install(args):
             if managed(path) != expected:
                 raise ValueError(f"Skill verification failed: {path}")
             rows.append({"skill": str(path), "status": status})
+        if release is not None:
+            save_source({**release, "bundle_sha256": bundle_digest(expected),
+                         "skill_roots": [str(path) for path in roots]})
     result = {"command": str(cli), "roots": rows, "skill_sha256": expected["SKILL.md"],
               "router": {"command": str(router_cli), "roots": router_rows, "module_sha256": router_expected["ai_tool_router.py"]}}
+    if release is not None:
+        result["source"] = release
     if args.with_extensions:
         try:
             result["chrome"] = extension_plan(argparse.Namespace(action="setup", only=None, kimi=False))
@@ -188,6 +200,57 @@ def install(args):
             return 1
     emit(result)
     return 0
+
+
+def bundle_digest(file_hashes):
+    return hashlib.sha256(json.dumps(file_hashes, sort_keys=True).encode()).hexdigest()
+
+
+def save_source(record):
+    with tempfile.NamedTemporaryFile(mode="w", dir=STATE, delete=False) as handle:
+        temporary = Path(handle.name)
+        json.dump(record, handle, indent=2)
+        handle.write("\n")
+    try:
+        temporary.replace(SOURCE_RECEIPT)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def sync(args):
+    prior = json.loads(SOURCE_RECEIPT.read_text()) if SOURCE_RECEIPT.is_file() else {}
+    if bool(args.ref) != bool(args.commit):
+        raise ValueError("Specify both --ref and --commit for a release change")
+    ref, commit = (args.ref, args.commit) if args.ref else (prior.get("ref", ""), prior.get("commit", ""))
+    if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", ref) or not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise ValueError("A release tag such as v0.4.0 and its full 40-character commit are required")
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    with tempfile.TemporaryDirectory(prefix="agent-superkit-release-") as scratch:
+        git = ["git", "-c", "credential.helper=", "-c", "advice.detachedHead=false", "-C", scratch]
+        subprocess.run([*git, "init", "--quiet"], env=env, check=True, timeout=15)
+        subprocess.run([*git, "fetch", "--quiet", "--depth=1", GITHUB_REPO, f"refs/tags/{ref}"],
+                       env=env, check=True, timeout=60)
+        resolved = subprocess.check_output([*git, "rev-parse", "FETCH_HEAD^{commit}"], env=env,
+                                           text=True, timeout=15).strip()
+        if resolved != commit:
+            raise ValueError(f"Tag {ref} resolved to {resolved}; expected {commit}")
+        subprocess.run([*git, "checkout", "--quiet", "--detach", resolved], env=env, check=True, timeout=20)
+        bundle = Path(scratch).resolve() / "skills" / NAME
+        return install(args, bundle, {"repository": GITHUB_REPO, "ref": ref, "commit": commit},
+                       prior.get("skill_roots", ()))
+
+
+def source(_):
+    if not SOURCE_RECEIPT.is_file():
+        emit({"repository": GITHUB_REPO, "status": "not_pinned"})
+        return 0
+    receipt = json.loads(SOURCE_RECEIPT.read_text())
+    try:
+        verified = receipt["bundle_sha256"] == bundle_digest(managed(STATE / NAME))
+    except ValueError:
+        verified = False
+    emit({**receipt, "status": "verified_local_release" if verified else "local_bundle_mismatch"})
+    return 0 if verified else 1
 
 
 def bridge_status():
@@ -306,6 +369,13 @@ def main():
     install_parser.add_argument("--registry", type=Path, help="Existing local workbench platform-sync.json")
     install_parser.add_argument("--with-extensions", action="store_true", help="Open the default Chrome Web Store pages after installation")
     install_parser.set_defaults(run=install)
+    sync_parser = commands.add_parser("sync", help="Install an exact release from the canonical GitHub repository")
+    sync_parser.add_argument("--ref", help="Published release tag; defaults to the last verified tag")
+    sync_parser.add_argument("--commit", help="Full commit for the tag; defaults to the last verified commit")
+    sync_parser.add_argument("--skill-root", action="append", type=Path, default=[])
+    sync_parser.add_argument("--registry", type=Path, help="Existing local workbench platform-sync.json")
+    sync_parser.set_defaults(run=sync, with_extensions=False)
+    commands.add_parser("source", help="Read and verify the locally installed GitHub release receipt").set_defaults(run=source)
     route_parser = commands.add_parser("route", help="Choose one tool locally without invoking it",
                                        epilog="Tool IDs: " + ", ".join(sorted(TOOL_IDS)))
     add_route_arguments(route_parser)

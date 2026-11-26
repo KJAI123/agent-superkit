@@ -1,5 +1,8 @@
 import importlib.util
 import json
+from argparse import Namespace
+from contextlib import redirect_stdout
+from io import StringIO
 import os
 from pathlib import Path
 import shutil
@@ -17,7 +20,7 @@ class InstallTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.home = Path(self.temp.name) / "home"
+        self.home = Path(self.temp.name).resolve() / "home"
         self.home.mkdir()
         self.env = {**os.environ, "HOME": str(self.home)}
         self.target = self.home / ".agents/skills/agent-superkit/SKILL.md"
@@ -125,7 +128,6 @@ class InstallTest(unittest.TestCase):
         module = importlib.util.module_from_spec(spec)
         with patch.object(sys, "path", [str(SCRIPT.parent), *sys.path]):
             spec.loader.exec_module(module)
-        from argparse import Namespace
         with patch.object(module, "MAC", True), patch.object(module.subprocess, "run") as launcher:
             with patch.object(module, "bridge_status", return_value="connected"):
                 result = module.extension_plan(Namespace(action="setup", only=None, kimi=True))
@@ -135,6 +137,45 @@ class InstallTest(unittest.TestCase):
             self.assertEqual(result["extensions"][-1]["next"], "reuse_connected_bridge")
             self.assertTrue(all(row["next"] == "store_opened_verify_in_chrome"
                                 for row in result["extensions"] if row["tier"] == "core"))
+
+    def test_github_sync_pins_release_and_keeps_registered_roots(self):
+        repo = Path(self.temp.name) / "release"
+        shutil.copytree(SKILL, repo / "skills/agent-superkit")
+        git = ["git", "-C", str(repo), "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid"]
+        for command in (["init", "--quiet"], ["add", "skills"],
+                        ["commit", "--quiet", "-m", "Fixture"], ["tag", "-a", "v0.4.0", "-m", "Fixture"]):
+            subprocess.run([*git, *command], env=self.env, check=True, capture_output=True)
+        commit = subprocess.check_output([*git, "rev-parse", "HEAD"], env=self.env, text=True).strip()
+        spec = importlib.util.spec_from_file_location("superkit", SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        state = self.home / ".local/share/agent-superkit"
+        receipt = state / "github-source.json"
+        extra = self.home / "other/skills"
+        with patch.object(sys, "path", [str(SCRIPT.parent), *sys.path]):
+            spec.loader.exec_module(module)
+        args = Namespace(ref="v0.4.0", commit="0"*40, registry=None, skill_root=[extra], with_extensions=False)
+        with patch.multiple(module, HOME=self.home, STATE=state, SOURCE_RECEIPT=receipt, GITHUB_REPO=str(repo)):
+            with self.assertRaisesRegex(ValueError, "resolved to"):
+                module.sync(args)
+            self.assertFalse(receipt.exists())
+            self.assertFalse(self.target.exists())
+            args.commit = commit
+            with redirect_stdout(StringIO()):
+                self.assertEqual(module.sync(args), 0)
+            latest = StringIO()
+            with redirect_stdout(latest):
+                self.assertEqual(module.sync(Namespace(ref=None, commit=None, registry=None, skill_root=[],
+                                                       with_extensions=False)), 0)
+            self.assertIn(str(extra / "ai-tool-router"),
+                          {row["skill"] for row in json.loads(latest.getvalue())["router"]["roots"]})
+            self.assertEqual(json.loads(receipt.read_text())["commit"], commit)
+            self.assertTrue((extra / "ai-tool-router/SKILL.md").is_file())
+            self.assertEqual(self.successful("source")["status"], "verified_local_release")
+            with (state / "agent-superkit/SKILL.md").open("a") as stream:
+                stream.write("\nLocal edit\n")
+            result = self.invoke("source")
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(json.loads(result.stdout)["status"], "local_bundle_mismatch")
 
 
 if __name__ == "__main__":

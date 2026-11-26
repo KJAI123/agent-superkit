@@ -5,7 +5,9 @@ description: 为本机 Agent 安装和调用共享工作入口。适用于 Chrom
 
 # Agent Superkit
 
-# 先做一次轻量判断
+通用工具能力统一从 [Agent Superkit GitHub 发布版](https://github.com/KJAI123/agent-superkit/tags) 取得。执行时调用已同步的本机副本；需要核版本时运行 `~/.local/bin/agent-superkit source`。新版本由负责安装的人用 `sync --ref <标签> --commit <完整提交>` 同步。能访问 GitHub 但没有本机命令的客户端可读取同一标签下的说明，再用本环境的工具执行。
+
+## 先做一次轻量判断
 
 用任务的目标和已知可用工具判断一次：`~/.local/bin/ai-tool-router <意图> --available 工具ID,工具ID`。也可使用 `agent-superkit route` 调用同一模块。未掌握库存可省略 `--available`，再只核推荐工具。已经在正确目标上工作可传 `--current 工具ID`；业务写入传 `--effect write`，影响不明传 `--effect unknown`。用户指定工具、当前授权和工具自身规则优先。同一目标继续用当前工具；只有目标、可用性或访问范围改变才重选。
 

@@ -5,6 +5,8 @@ description: 为当前任务从已知可用工具中选出一个工具和下一�
 
 # AI Tool Router
 
+模块以 [Agent Superkit GitHub 发布版](https://github.com/KJAI123/agent-superkit/tags) 为统一来源。执行用已同步的本机副本，需确认当前发布版时运行 `~/.local/bin/agent-superkit source`。
+
 判断一次任务意图，把当前已知可用且匹配目标的工具交给路由：
 
 ```sh
