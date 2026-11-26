@@ -14,6 +14,21 @@ git clone https://github.com/KJAI123/agent-superkit.git && python3 -B agent-supe
 
 需要在同一条安装命令中打开默认扩展商店页时，加 `--with-extensions`。
 
+## 快速选工具
+
+Agent 把目标归为一个意图，直接把当前已知的工具交给 `route`。每次只返回首选工具和下一步。选择过程用本地规则，无需启动浏览器、运行 `doctor` 或请求模型。
+
+```sh
+~/.local/bin/agent-superkit route public-read --available web,http,computer-use
+~/.local/bin/agent-superkit route signed-in --available webbridge,computer-use
+~/.local/bin/agent-superkit route site-qa --available cdp
+~/.local/bin/agent-superkit route publish --available existing-channel --effect write
+```
+
+`--available` 只填当前会话或操作者确认可用且匹配目标的工具。已在正确会话中时传 `--current` 复用。`route --help` 列出意图和参数；`--json` 用于程序读取。`site-audit`、`answer-sample` 等结果指向技能内的对应流程，`user-verification` 指用户在官方页面完成的动作。
+
+## 浏览器工具
+
 ```sh
 ~/.local/bin/agent-superkit doctor
 ~/.local/bin/agent-superkit extensions setup

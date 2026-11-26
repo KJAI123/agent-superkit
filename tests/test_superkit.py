@@ -49,6 +49,41 @@ class InstallTest(unittest.TestCase):
         self.assertEqual(self.target.read_text(), "Local modifications")
         command = Path(updated["command"])
         self.assertEqual(self.successful("extensions", "plan", script=command)["action"], "plan")
+        self.assertEqual(self.successful("route", "ocr", "--available", "local-ocr", "--json", script=command)["tool"], "local-ocr")
+
+    def test_route_respects_surface_availability_and_current_tool(self):
+        cases = (
+            ("public-read", "web,http,computer-use", "web", "ready", []),
+            ("public-read", "web,http", "http", "ready", ["--current", "http"]),
+            ("public-read", "web", "web", "ready", ["--current", "http"]),
+            ("signed-in", "web,http", None, "missing-tool", []),
+            ("signed-in", "webbridge,computer-use", "webbridge", "ready", []),
+            ("signed-in", "computer-use", "computer-use", "ready", []),
+            ("site-qa", "computer-use", None, "missing-tool", []),
+            ("ocr", "", None, "missing-tool", []),
+            ("unknown", "computer-use", None, "clarify-target", []),
+        )
+        for intent, tools, output, step, flags in cases:
+            with self.subTest(intent=intent, tools=tools, flags=flags):
+                result = self.successful("route", intent, "--available", tools, "--json", *flags)
+                self.assertEqual((result["tool"], result["next"]), (output, step))
+
+    def test_route_marks_write_and_verification_without_executing(self):
+        cases = (
+            ("extensions", "chrome-store", "check-authority", []),
+            ("publish", "existing-channel", "check-authority", ["--effect", "read"]),
+            ("signed-in", "connector", "check-authority", ["--effect", "write"]),
+            ("public-read", "http", "check-effect", ["--effect", "unknown"]),
+            ("community", "existing-channel", "check-effect", []),
+            ("replay", "cdp", "ready", ["--effect", "read"]),
+            ("account", "user-verification", "user-verification", []),
+        )
+        for intent, tool, step, flags in cases:
+            with self.subTest(intent=intent, flags=flags):
+                result = self.invoke("route", intent, "--available", tool, *flags)
+                self.assertEqual((result.returncode, result.stdout.strip()), (0, f"{tool} {step}"))
+        self.assertEqual(self.invoke("route", "geo").stdout.strip(), "answer-sample check-tool")
+        self.assertFalse(self.target.exists())
 
     def test_preserve_unmanaged_cli_and_skill(self):
         cli = self.home / ".local/bin/agent-superkit"
