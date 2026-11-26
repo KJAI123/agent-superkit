@@ -1,0 +1,6 @@
+[
+  {"key":"gofullpage","tier":"core","name":"GoFullPage","url":"https://chromewebstore.google.com/detail/gofullpage-full-page-scre/fdpohaocaechififmbbbbbknoalclacl","check":"Capture a public fixture and verify PNG or PDF output."},
+  {"key":"taba11y","tier":"core","name":"taba11y","url":"https://chromewebstore.google.com/detail/taba11y-tab-order-accessi/aocppmckdocdjkphmofnklcjhdidgmga","check":"Run on a public fixture and verify the keyboard order overlay."},
+  {"key":"markdown","tier":"core","name":".MD this page","url":"https://chromewebstore.google.com/detail/md-this-page/banfcmclfmmlbkhionmemhibbjedhikm","check":"Convert a public fixture and verify original URL and extracted text."},
+  {"key":"kimi","tier":"optional","name":"Kimi","url":"https://chromewebstore.google.com/detail/kimi/fldmhceldgbpfpkbgopacenieobmligc","check":"Verify existing bridge connectivity and read one public tab. Review browser site-data and debugger access before installation."}
+]
