@@ -14,7 +14,12 @@ import subprocess
 import sys
 import tempfile
 
+# Managed skill directories are verified byte-for-byte on upgrade.
+sys.dont_write_bytecode = True
+from ai_tool_router import TOOL_IDS, add_arguments as add_route_arguments, route
+
 NAME = "agent-superkit"
+ROUTER = "ai-tool-router"
 ROOT = Path(__file__).resolve().parents[1]
 HOME = Path.home().resolve()
 STATE = HOME / ".local/share" / NAME
@@ -22,67 +27,8 @@ MARKER = ".agent-superkit-install.json"
 MAC = platform.system() == "Darwin"
 BRIDGE = HOME / ".kimi-webbridge/bin/kimi-webbridge"
 
-# Leftmost is preferred. Every fallback stays on the same kind of surface.
-ROUTES = {
-    "public-read": ("connector", "web", "http", "webbridge", "computer-use"),
-    "signed-in": ("connector", "webbridge", "computer-use"),
-    "site-qa": ("cdp",),
-    "desktop": ("computer-use",),
-    "ocr": ("local-ocr",),
-    "replay": ("recorder", "cdp"),
-    "extensions": ("chrome-store",),
-    "sessions": ("native-registry", "computer-use"),
-    "handoff": ("workbench", "native-session"),
-    "seo": ("site-audit",),
-    "geo": ("answer-sample",),
-    "growth": ("first-party-report",),
-    "source": ("official-source",),
-    "community": ("existing-channel",),
-    "publish": ("existing-channel",),
-    "account": ("user-verification",),
-    "unknown": (),
-}
-NATIVE_ACTIONS = {"extensions", "handoff", "publish", "account"}
-TOOL_IDS = {tool for tools in ROUTES.values() for tool in tools}
-
-
 def emit(value):
     print(json.dumps(value, ensure_ascii=False, indent=2))
-
-
-def available_tools(csv):
-    tools = set(csv.split(",")) if csv else set()
-    if tools - TOOL_IDS:
-        raise argparse.ArgumentTypeError("unknown tool IDs: " + ", ".join(sorted(tools - TOOL_IDS)))
-    return tools
-
-
-def select_route(intent, available=None, current=None, effect=None):
-    candidates = ROUTES[intent]
-    viable = candidates if available is None else tuple(tool for tool in candidates if tool in available)
-    tool = current if current in viable else next(iter(viable), None)
-    if intent == "unknown":
-        step = "clarify-target"
-    elif tool is None:
-        step = "missing-tool"
-    elif intent == "account":
-        step = "user-verification"
-    elif intent in NATIVE_ACTIONS or effect == "write":
-        step = "check-authority"
-    elif effect == "unknown" or (effect is None and intent in {"community", "replay"}):
-        step = "check-effect"
-    else:
-        step = "ready" if available is not None else "check-tool"
-    return {"intent": intent, "tool": tool, "next": step}
-
-
-def route(args):
-    result = select_route(args.intent, args.available, args.current, args.effect)
-    if args.json:
-        emit(result)
-    else:
-        print(result["tool"] or "-", result["next"])
-    return 0
 
 
 def package_files():
@@ -113,10 +59,10 @@ def managed(path):
     return expected
 
 
-def install_copy(parent, files, expected):
+def install_copy(parent, files, expected, name=NAME):
     parent.mkdir(parents=True, exist_ok=True)
-    target = parent / NAME
-    backup = parent / f".{NAME}.previous"
+    target = parent / name
+    backup = parent / f".{name}.previous"
     if backup.exists() or backup.is_symlink():
         managed(backup)
         if target.exists():
@@ -126,8 +72,8 @@ def install_copy(parent, files, expected):
             backup.rename(target)
     if (target.exists() or target.is_symlink()) and managed(target) == expected:
         return target, "unchanged"
-    with tempfile.TemporaryDirectory(prefix=f".{NAME}-", dir=parent) as scratch:
-        stage = Path(scratch) / NAME
+    with tempfile.TemporaryDirectory(prefix=f".{name}-", dir=parent) as scratch:
+        stage = Path(scratch) / name
         for name, data in files.items():
             file = stage / name
             file.parent.mkdir(parents=True, exist_ok=True)
@@ -177,17 +123,17 @@ def install_lock():
         yield
 
 
-def cli_path(engine):
-    cli = HOME / ".local/bin" / NAME
+def cli_path(engine, name=NAME):
+    cli = HOME / ".local/bin" / name
     if (cli.exists() or cli.is_symlink()) and not (cli.is_symlink() and cli.resolve() == engine):
         raise ValueError(f"Preserving existing command: {cli}")
     return cli
 
 
-def install_cli(engine):
+def install_cli(engine, name=NAME):
     directory = HOME / ".local/bin"
     directory.mkdir(parents=True, exist_ok=True)
-    cli = cli_path(engine)
+    cli = cli_path(engine, name)
     if not cli.is_symlink():
         cli.symlink_to(engine)
     return cli
@@ -196,22 +142,34 @@ def install_cli(engine):
 def install(args):
     files = package_files()
     expected = hashes(files)
+    router_files = {"SKILL.md": files["references/ai-tool-router.skill.md"],
+                    "ai_tool_router.py": files["scripts/ai_tool_router.py"]}
+    router_expected = hashes(router_files)
     roots = skill_roots(args)
+    router_engine = STATE / ROUTER / "ai_tool_router.py"
     with install_lock():
         # Keep the runtime separate from paths the agents may re-index or manage.
         cli_path(STATE / NAME / "scripts/superkit.py")
+        cli_path(router_engine, ROUTER)
         for parent in [STATE, *roots]:
-            target = parent / NAME
-            if target == ROOT:
-                continue
-            if target.exists() or target.is_symlink():
-                managed(target)
+            for name in (NAME, ROUTER):
+                target = parent / name
+                if target != ROOT and (target.exists() or target.is_symlink()):
+                    managed(target)
         runtime, _ = install_copy(STATE, files, expected)
         engine = runtime / "scripts/superkit.py"
         engine.chmod(0o755)
         cli = install_cli(engine)
+        install_copy(STATE, router_files, router_expected, ROUTER)
+        router_engine.chmod(0o755)
+        router_cli = install_cli(router_engine, ROUTER)
         rows = []
+        router_rows = []
         for parent in roots:
+            router_path, router_status = install_copy(parent, router_files, router_expected, ROUTER)
+            if managed(router_path) != router_expected:
+                raise ValueError(f"Router verification failed: {router_path}")
+            router_rows.append({"skill": str(router_path), "status": router_status})
             if parent / NAME == ROOT and not (ROOT / MARKER).is_file():
                 rows.append({"skill": str(ROOT), "status": "source_already_available"})
                 continue
@@ -219,7 +177,8 @@ def install(args):
             if managed(path) != expected:
                 raise ValueError(f"Skill verification failed: {path}")
             rows.append({"skill": str(path), "status": status})
-    result = {"command": str(cli), "roots": rows, "skill_sha256": expected["SKILL.md"]}
+    result = {"command": str(cli), "roots": rows, "skill_sha256": expected["SKILL.md"],
+              "router": {"command": str(router_cli), "roots": router_rows, "module_sha256": router_expected["ai_tool_router.py"]}}
     if args.with_extensions:
         try:
             result["chrome"] = extension_plan(argparse.Namespace(action="setup", only=None, kimi=False))
@@ -349,11 +308,7 @@ def main():
     install_parser.set_defaults(run=install)
     route_parser = commands.add_parser("route", help="Choose one tool locally without invoking it",
                                        epilog="Tool IDs: " + ", ".join(sorted(TOOL_IDS)))
-    route_parser.add_argument("intent", choices=ROUTES)
-    route_parser.add_argument("--available", metavar="TOOL,TOOL", type=available_tools)
-    route_parser.add_argument("--current", choices=sorted(TOOL_IDS), help="Tool already on the right target")
-    route_parser.add_argument("--effect", choices=["read", "write", "unknown"])
-    route_parser.add_argument("--json", action="store_true")
+    add_route_arguments(route_parser)
     route_parser.set_defaults(run=route)
     commands.add_parser("doctor").set_defaults(run=doctor)
     extension_parser = commands.add_parser("extensions", help="Plan or open official Chrome Web Store pages")

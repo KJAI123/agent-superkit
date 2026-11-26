@@ -16,11 +16,11 @@ git clone https://github.com/KJAI123/agent-superkit.git && python3 -B agent-supe
 
 ## 快速选工具
 
-Agent 把目标归为一个意图，直接把当前已知的工具交给 `route`。每次只返回首选工具和下一步。选择过程用本地规则，无需启动浏览器、运行 `doctor` 或请求模型。
+安装后各 Agent 可以直接调用独立技能 **`$ai-tool-router`**，或使用命令 `~/.local/bin/ai-tool-router`。现有 `agent-superkit route` 使用同一模块。每次只返回首选工具和下一步，选择过程用本地规则，无需启动浏览器、运行 `doctor` 或请求模型。脚本型 Agent 可直接调用 [独立模块源码](skills/agent-superkit/scripts/ai_tool_router.py) 中的 `select_route`，返回同一结构。
 
 ```sh
 ~/.local/bin/agent-superkit route public-read --available web,http,computer-use
-~/.local/bin/agent-superkit route signed-in --available webbridge,computer-use
+~/.local/bin/ai-tool-router signed-in --available webbridge,computer-use
 ~/.local/bin/agent-superkit route site-qa --available cdp
 ~/.local/bin/agent-superkit route publish --available existing-channel --effect write
 ```
@@ -41,6 +41,6 @@ Agent 把目标归为一个意图，直接把当前已知的工具交给 `route`
 
 在原克隆目录执行 `git pull --ff-only`，再重新运行 `python3 -B skills/agent-superkit/scripts/superkit.py install`。若使用了额外技能目录或本机注册表，更新时沿用同样的参数。安装回读按文件哈希验证，已存在的未受本工具管理目录或本地改动会保留并提示。
 
-新能力先运行 `python3 -B -m unittest discover -s tests -v`，再用隔离浏览器复测相关行为。扩展条目使用官方商店链接及可执行的回读验证。业务环境的登录态、运行数据和本机配置独立维护。
+新能力提供独立模块和明确的输入、输出，让 Agent 能直接调用；Superkit 复用该模块，保留已有入口。先运行 `python3 -B -m unittest discover -s tests -v`，涉及浏览器行为时再用隔离浏览器复测。扩展条目使用官方商店链接及可执行的回读验证。业务环境的登录态、运行数据和本机配置独立维护。
 
 [Chrome 扩展安装规则](https://support.google.com/chrome_webstore/answer/2664769)

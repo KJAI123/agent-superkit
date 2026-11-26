@@ -51,6 +51,19 @@ class InstallTest(unittest.TestCase):
         self.assertEqual(self.successful("extensions", "plan", script=command)["action"], "plan")
         self.assertEqual(self.successful("route", "ocr", "--available", "local-ocr", "--json", script=command)["tool"], "local-ocr")
 
+    def test_independent_router_skill_and_legacy_entry_share_decisions(self):
+        result = self.successful("install")
+        router = Path(result["router"]["command"])
+        common = ["signed-in", "--available", "webbridge,computer-use", "--json"]
+        expected = self.successful("route", *common, script=Path(result["command"]))
+        direct = subprocess.check_output([result["command"], "route", *common], env=self.env, text=True)
+        self.assertEqual(json.loads(direct), expected)
+        self.assertEqual(self.successful(*common, script=router), expected)
+        skill_module = self.home / ".agents/skills/ai-tool-router/ai_tool_router.py"
+        self.assertEqual(self.successful(*common, script=skill_module), expected)
+        self.assertEqual(skill_module.read_bytes(), router.read_bytes())
+        self.assertTrue(all(x["status"] == "unchanged" for x in self.successful("install")["router"]["roots"]))
+
     def test_route_respects_surface_availability_and_current_tool(self):
         cases = (
             ("public-read", "web,http,computer-use", "web", "ready", []),
@@ -110,7 +123,8 @@ class InstallTest(unittest.TestCase):
     def test_launch_reports_store_and_reuses_connected_bridge(self):
         spec = importlib.util.spec_from_file_location("superkit", SCRIPT)
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        with patch.object(sys, "path", [str(SCRIPT.parent), *sys.path]):
+            spec.loader.exec_module(module)
         from argparse import Namespace
         with patch.object(module, "MAC", True), patch.object(module.subprocess, "run") as launcher:
             with patch.object(module, "bridge_status", return_value="connected"):

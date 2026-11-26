@@ -7,7 +7,7 @@ description: 为本机 Agent 安装和调用共享工作入口。适用于 Chrom
 
 # 先做一次轻量判断
 
-用任务的目标和已知可用工具判断一次：`~/.local/bin/agent-superkit route <意图> --available 工具ID,工具ID`。未掌握库存可省略 `--available`，再只核推荐工具。已经在正确目标上工作可传 `--current 工具ID`；业务写入传 `--effect write`，影响不明传 `--effect unknown`。用户指定工具、当前授权和工具自身规则优先。同一目标继续用当前工具；只有目标、可用性或访问范围改变才重选。
+用任务的目标和已知可用工具判断一次：`~/.local/bin/ai-tool-router <意图> --available 工具ID,工具ID`。也可使用 `agent-superkit route` 调用同一模块。未掌握库存可省略 `--available`，再只核推荐工具。已经在正确目标上工作可传 `--current 工具ID`；业务写入传 `--effect write`，影响不明传 `--effect unknown`。用户指定工具、当前授权和工具自身规则优先。同一目标继续用当前工具；只有目标、可用性或访问范围改变才重选。
 
 - `ready` 直接用选定工具；`check-tool` 只核该工具；`check-authority`、`check-effect` 只核本次动作；`user-verification` 由用户在官方页面完成；`missing-tool` 或 `clarify-target` 回到具体缺口。路由只输出 `工具 下一步`，加 `--json` 得到结构化值。
 - 浏览器意图 `public-read`、`signed-in`、`site-qa`、`desktop`、`ocr`、`replay`、`extensions`。已登录操作限定当前获准账号；复杂浏览器取证再读 [浏览器与扩展](references/browser.md)。
