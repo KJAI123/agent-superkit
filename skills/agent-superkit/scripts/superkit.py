@@ -21,6 +21,7 @@ from ai_tool_router import TOOL_IDS, add_arguments as add_route_arguments, route
 
 NAME = "agent-superkit"
 ROUTER = "ai-tool-router"
+SEARCH = "web-search-kit"
 ROOT = Path(__file__).resolve().parents[1]
 HOME = Path.home().resolve()
 STATE = HOME / ".local/share" / NAME
@@ -148,47 +149,47 @@ def install_cli(engine, name=NAME):
 
 def install(args, bundle=ROOT, release=None, previous_roots=()):
     files = package_files(bundle)
-    expected = hashes(files)
-    router_files = {"SKILL.md": files["references/ai-tool-router.skill.md"],
-                    "ai_tool_router.py": files["scripts/ai_tool_router.py"]}
-    router_expected = hashes(router_files)
+    packages = {
+        NAME: (files, "scripts/superkit.py"),
+        ROUTER: ({"SKILL.md": files["references/ai-tool-router.skill.md"],
+                  "ai_tool_router.py": files["scripts/ai_tool_router.py"]}, "ai_tool_router.py"),
+        SEARCH: ({"SKILL.md": files["references/web-search-kit.skill.md"],
+                  "providers.md": files["references/search-providers.md"],
+                  "web_search_kit.py": files["scripts/web_search_kit.py"]}, "web_search_kit.py"),
+    }
     roots = skill_roots(args, previous_roots)
-    router_engine = STATE / ROUTER / "ai_tool_router.py"
+    installed = {}
     with install_lock():
         # Keep the runtime separate from paths the agents may re-index or manage.
-        cli_path(STATE / NAME / "scripts/superkit.py")
-        cli_path(router_engine, ROUTER)
+        for name, (_, entry) in packages.items():
+            cli_path(STATE / name / entry, name)
         for parent in [STATE, *roots]:
-            for name in (NAME, ROUTER):
+            for name in packages:
                 target = parent / name
                 if target != ROOT and (target.exists() or target.is_symlink()):
                     managed(target)
-        runtime, _ = install_copy(STATE, files, expected)
-        engine = runtime / "scripts/superkit.py"
-        engine.chmod(0o755)
-        cli = install_cli(engine)
-        install_copy(STATE, router_files, router_expected, ROUTER)
-        router_engine.chmod(0o755)
-        router_cli = install_cli(router_engine, ROUTER)
-        rows = []
-        router_rows = []
-        for parent in roots:
-            router_path, router_status = install_copy(parent, router_files, router_expected, ROUTER)
-            if managed(router_path) != router_expected:
-                raise ValueError(f"Router verification failed: {router_path}")
-            router_rows.append({"skill": str(router_path), "status": router_status})
-            if parent / NAME == ROOT and not (ROOT / MARKER).is_file():
-                rows.append({"skill": str(ROOT), "status": "source_already_available"})
-                continue
-            path, status = install_copy(parent, files, expected)
-            if managed(path) != expected:
-                raise ValueError(f"Skill verification failed: {path}")
-            rows.append({"skill": str(path), "status": status})
+        for name, (members, entry) in packages.items():
+            expected = hashes(members)
+            runtime, _ = install_copy(STATE, members, expected, name)
+            engine = runtime / entry
+            engine.chmod(0o755)
+            cli = install_cli(engine, name)
+            rows = []
+            for parent in roots:
+                if parent / name == ROOT and not (ROOT / MARKER).is_file():
+                    rows.append({"skill": str(ROOT), "status": "source_already_available"})
+                    continue
+                path, status = install_copy(parent, members, expected, name)
+                if managed(path) != expected:
+                    raise ValueError(f"Skill verification failed: {path}")
+                rows.append({"skill": str(path), "status": status})
+            installed[name] = {"command": str(cli), "roots": rows, "module_sha256": expected[entry]}
         if release is not None:
-            save_source({**release, "bundle_sha256": bundle_digest(expected),
+            save_source({**release, "bundle_sha256": bundle_digest(hashes(files)),
                          "skill_roots": [str(path) for path in roots]})
-    result = {"command": str(cli), "roots": rows, "skill_sha256": expected["SKILL.md"],
-              "router": {"command": str(router_cli), "roots": router_rows, "module_sha256": router_expected["ai_tool_router.py"]}}
+    result = {"command": installed[NAME]["command"], "roots": installed[NAME]["roots"],
+              "skill_sha256": hashlib.sha256(files["SKILL.md"]).hexdigest(),
+              "router": installed[ROUTER], "search": installed[SEARCH]}
     if release is not None:
         result["source"] = release
     if args.with_extensions:

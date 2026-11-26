@@ -66,6 +66,10 @@ class InstallTest(unittest.TestCase):
         self.assertEqual(self.successful(*common, script=skill_module), expected)
         self.assertEqual(skill_module.read_bytes(), router.read_bytes())
         self.assertTrue(all(x["status"] == "unchanged" for x in self.successful("install")["router"]["roots"]))
+        search = self.successful("plan", "deep", "--available", "keenable,builtin",
+                                 script=Path(result["search"]["command"]))
+        self.assertEqual(search["tool"], "keenable")
+        self.assertTrue((self.home / ".agents/skills/web-search-kit/providers.md").is_file())
 
     def test_route_respects_surface_availability_and_current_tool(self):
         cases = (

@@ -38,9 +38,20 @@ python3 -B agent-superkit/skills/agent-superkit/scripts/superkit.py sync --ref "
 
 扩展命令一次打开官方商店页面，Chrome 原生流程安装与授权。在同一配置下打开 `chrome://extensions/` 确认启用。Kimi 单独可选并复用已连接的 WebBridge。浏览器回归和 OCR 依赖见 [浏览器使用指引](skills/agent-superkit/references/browser.md)。
 
+## 公开搜索与证据核查
+
+独立技能 `$web-search-kit` 可选择快搜、深研、中文、官方文档与已知页面提取入口。使用本机现成的搜索能力，或显式选择一个 API 发一次查询。适配器返回候选 URL、片段及提供方日期，引用前打开原页核对。供应商、官方 MCP 和 Skill 见 [公开搜索工具目录](skills/agent-superkit/references/search-providers.md)。
+
+```sh
+~/.local/bin/web-search-kit plan deep --available builtin,keenable
+~/.local/bin/web-search-kit search keenable 'FastAPI response model site:fastapi.tiangolo.com' --limit 3 --execute
+```
+
 ## 更新
 
 已安装的 Agent 在执行时调用本机副本，用 `~/.local/bin/agent-superkit source` 查看标签、提交及本机验收状态。版本升级由维护者执行 `agent-superkit sync --ref <新标签> --commit <完整提交>`。同步会验证标签指向指定提交，并保留已登记目录。构建未发布版本时可在开发检出目录使用 `install`。已存在的未受本工具管理目录或本地改动会保留并提示。
+
+从 v0.4.0 升级时，用上面的首次安装方式运行 v0.5.0 标签内的 `sync`，以注册新增的独立搜索技能及 CLI。
 
 新能力提供独立模块和明确的输入、输出，让 Agent 能直接调用；Superkit 复用该模块，保留已有入口。先运行 `python3 -B -m unittest discover -s tests -v`，涉及浏览器行为时再用隔离浏览器复测。扩展条目使用官方商店链接及可执行的回读验证。业务环境的登录态、运行数据和本机配置独立维护。
 

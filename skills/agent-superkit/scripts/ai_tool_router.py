@@ -20,6 +20,7 @@ ROUTES = {
     "geo": ("answer-sample",),
     "growth": ("first-party-report",),
     "source": ("official-source",),
+    "search": ("web-search-kit", "web"),
     "community": ("existing-channel",),
     "publish": ("existing-channel",),
     "account": ("user-verification",),
