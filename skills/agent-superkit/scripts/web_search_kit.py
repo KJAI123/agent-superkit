@@ -117,7 +117,18 @@ def clean_url(value):
         return None
 
 
-def summarize(provider, payload, limit):
+def source_scope(value):
+    url = clean_url(value)
+    if not url:
+        raise argparse.ArgumentTypeError("Use an HTTPS origin and optional path, without query or fragment")
+    parts = urlsplit(url)
+    if (parts.scheme != "https" or "?" in value or "#" in value or "%" in parts.path
+            or {".", ".."}.intersection(parts.path.split("/"))):
+        raise argparse.ArgumentTypeError("Use an HTTPS origin and optional path, without query or fragment")
+    return url.rstrip("/")
+
+
+def summarize(provider, payload, limit, prefix=None):
     config = PROVIDERS[provider]
     if not isinstance(payload, dict) or payload.get("success") is False:
         raise ValueError("Provider reported an error")
@@ -130,6 +141,7 @@ def summarize(provider, payload, limit):
         raise ValueError(f"Unexpected {provider} result list")
     seen = set()
     results = []
+    scope = urlsplit(prefix) if prefix else None
     for rank, record in enumerate(rows, 1):
         if not isinstance(record, dict):
             continue
@@ -137,6 +149,12 @@ def summarize(provider, payload, limit):
         if not url or url in seen:
             continue
         seen.add(url)
+        if scope:
+            source = urlsplit(url)
+            if (source.scheme != scope.scheme or source.netloc != scope.netloc or "%" in source.path
+                    or {".", ".."}.intersection(source.path.split("/"))
+                    or (source.path != scope.path and not source.path.startswith(scope.path + "/"))):
+                continue
         excerpt = next((record.get(field) for field in config.snippet_fields if record.get(field)), "")
         if isinstance(excerpt, list):
             excerpt = " ".join(item for item in excerpt if isinstance(item, str))
@@ -146,8 +164,12 @@ def summarize(provider, payload, limit):
                         "snippet": " ".join(excerpt.split())[:800] if isinstance(excerpt, str) else "",
                         "provider_date": date[:80] if isinstance(date, str) else None,
                         "evidence": "search_result_unverified"})
-    return {"provider": provider, "provider_result_count": len(rows), "unique_usable_count": len(results),
-            "results": results[:limit]}
+    report = {"provider": provider, "provider_result_count": len(rows), "unique_usable_count": len(results),
+              "results": results[:limit]}
+    if prefix:
+        report.update({"source_prefix": prefix, "excluded_by_scope": len(seen) - len(results),
+                       "status": "matching_sources" if results else "no_matching_sources"})
+    return report
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -161,8 +183,11 @@ def search(args):
     if args.depth == "deep" and args.provider not in DEEP_PROVIDERS:
         raise ValueError("This provider does not have a deep profile in the kit")
     if not args.execute:
-        return {"provider": args.provider, "status": "preview", "depth": args.depth, "limit": args.limit,
-                "credentials_env": PROVIDERS[args.provider].env_key or None, "requests_sent": 0}
+        preview = {"provider": args.provider, "status": "preview", "depth": args.depth, "limit": args.limit,
+                   "credentials_env": PROVIDERS[args.provider].env_key or None, "requests_sent": 0}
+        if args.source_prefix:
+            preview["source_prefix"] = args.source_prefix
+        return preview
     key_name = PROVIDERS[args.provider].env_key
     key = os.environ.get(key_name) if key_name else "Agent Superkit"
     if not key:
@@ -173,7 +198,7 @@ def search(args):
         body = response.read(RESPONSE_LIMIT + 1)
     if len(body) > RESPONSE_LIMIT:
         raise ValueError("Response exceeded the search result size limit")
-    result = summarize(args.provider, json.loads(body), args.limit)
+    result = summarize(args.provider, json.loads(body), args.limit, args.source_prefix)
     result.update({"elapsed_ms": round(1000*(perf_counter()-start)), "requests_sent": 1,
                    "retrieved_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds")})
     return result
@@ -206,6 +231,7 @@ def main():
     live.add_argument("--limit", type=int, choices=range(1, 11), default=5)
     live.add_argument("--depth", choices=("quick", "deep"), default="quick")
     live.add_argument("--probe", action="append", type=query_value, default=[], help="Parallel keyword probe; repeat up to three times")
+    live.add_argument("--source-prefix", type=source_scope, help="Keep candidates on an exact HTTPS origin and optional path")
     live.add_argument("--execute", action="store_true", help="Send the public query using the configured provider key")
     args = parser.parse_args()
     try:

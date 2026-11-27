@@ -201,6 +201,19 @@ class InstallTest(unittest.TestCase):
             self.assertEqual(json.loads(receipt.read_text())["commit"], commit)
             self.assertTrue((extra / "ai-tool-router/SKILL.md").is_file())
             self.assertEqual(self.successful("source")["status"], "verified_local_release")
+            copy = extra / "web-search-kit/SKILL.md"
+            original = copy.read_bytes()
+            copy.write_text("Different skill instructions")
+            result = self.invoke("source")
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(json.loads(result.stdout)["mismatches"], [str(copy.parent)])
+            copy.write_bytes(original)
+            cli = self.home / ".local/bin/app-cli-kit"
+            cli.unlink()
+            result = self.invoke("source")
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(json.loads(result.stdout)["mismatches"], [str(cli)])
+            cli.symlink_to(state / "app-cli-kit/app_cli_kit.py")
             with (state / "agent-superkit/SKILL.md").open("a") as stream:
                 stream.write("\nLocal edit\n")
             result = self.invoke("source")

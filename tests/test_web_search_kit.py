@@ -65,6 +65,21 @@ class SearchKitTest(unittest.TestCase):
         redirect = KIT.NoRedirect().redirect_request(None, None, 302, "", {}, "https://other.example/")
         self.assertIsNone(redirect)
 
+    def test_source_prefix_keeps_exact_origin_and_path_segments(self):
+        urls = ["https://example.com/docs-community", "https://example.com/docs/../community",
+                "https://example.com/docs/%2e%2e/community", "https://other.example.com/docs",
+                "http://example.com/docs", "https://example.com/docs/api",
+                "https://example.com/docs?utm_campaign=test"]
+        payload = {"results": [{"url": url} for url in urls]}
+        prefix = KIT.source_scope("https://example.com/docs/")
+        report = KIT.summarize("keenable", payload, 3, prefix)
+        self.assertEqual(report["excluded_by_scope"], 5)
+        self.assertEqual(report["status"], "matching_sources")
+        self.assertEqual([r["rank"] for r in report["results"]], [6, 7])
+        self.assertEqual(report["results"][0]["evidence"], "search_result_unverified")
+        empty = KIT.summarize("keenable", payload, 3, "https://example.com/other")
+        self.assertEqual((empty["status"], empty["results"]), ("no_matching_sources", []))
+
 
 if __name__ == "__main__":
     unittest.main()

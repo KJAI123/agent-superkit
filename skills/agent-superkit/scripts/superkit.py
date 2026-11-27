@@ -148,9 +148,8 @@ def install_cli(engine, name=NAME):
     return cli
 
 
-def install(args, bundle=ROOT, release=None, previous_roots=()):
-    files = package_files(bundle)
-    packages = {
+def release_packages(files):
+    return {
         NAME: (files, "scripts/superkit.py"),
         ROUTER: ({"SKILL.md": files["references/ai-tool-router.skill.md"],
                   "ai_tool_router.py": files["scripts/ai_tool_router.py"]}, "ai_tool_router.py"),
@@ -160,6 +159,11 @@ def install(args, bundle=ROOT, release=None, previous_roots=()):
         APP_CLI: ({"SKILL.md": files["references/app-cli-kit.skill.md"],
                    "app_cli_kit.py": files["scripts/app_cli_kit.py"]}, "app_cli_kit.py"),
     }
+
+
+def install(args, bundle=ROOT, release=None, previous_roots=()):
+    files = package_files(bundle)
+    packages = release_packages(files)
     roots = skill_roots(args, previous_roots)
     installed = {}
     with install_lock():
@@ -248,13 +252,31 @@ def source(_):
     if not SOURCE_RECEIPT.is_file():
         emit({"repository": GITHUB_REPO, "status": "not_pinned"})
         return 0
-    receipt = json.loads(SOURCE_RECEIPT.read_text())
-    try:
-        verified = receipt["bundle_sha256"] == bundle_digest(managed(STATE / NAME))
-    except ValueError:
-        verified = False
-    emit({**receipt, "status": "verified_local_release" if verified else "local_bundle_mismatch"})
-    return 0 if verified else 1
+    mismatches = []
+    with install_lock():
+        receipt = json.loads(SOURCE_RECEIPT.read_text())
+        try:
+            files = managed(STATE / NAME)
+            if receipt["bundle_sha256"] != bundle_digest(files):
+                raise ValueError("Bundle differs from the pinned release")
+        except (OSError, ValueError):
+            mismatches.append(str(STATE / NAME))
+        else:
+            for name, (members, entry) in release_packages(files).items():
+                for parent in (STATE, *map(Path, receipt["skill_roots"])):
+                    target = parent / name
+                    try:
+                        if managed(target) != members:
+                            raise ValueError("Skill differs from the pinned release")
+                    except (OSError, ValueError):
+                        mismatches.append(str(target))
+                cli = HOME / ".local/bin" / name
+                engine = STATE / name / entry
+                if not cli.is_symlink() or cli.resolve() != engine or not os.access(engine, os.X_OK):
+                    mismatches.append(str(cli))
+    emit({**receipt, "status": "local_bundle_mismatch" if mismatches else "verified_local_release",
+          "mismatches": mismatches})
+    return 1 if mismatches else 0
 
 
 def bridge_status():

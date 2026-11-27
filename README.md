@@ -47,6 +47,8 @@ python3 -B agent-superkit/skills/agent-superkit/scripts/superkit.py sync --ref "
 ~/.local/bin/web-search-kit search keenable 'FastAPI response model site:fastapi.tiangolo.com' --limit 3 --execute
 ```
 
+已知官方文档路径时，可加 `--source-prefix https://fastapi.tiangolo.com/tutorial`，把同站社区文章及不相关子路径筛出。返回 `no_matching_sources` 时直接查已知官方入口，候选命中仍需回读。
+
 ## 本机应用与包元数据
 
 独立技能 `$app-cli-kit` 把本地应用任务交给已经核验过来源的 CLI。当前支持 CLI-Anything 的 LibreOffice Harness，以及参考 REA 工作流程的 `.app` 和 `.vsix` 只读包元数据核对。见 [调用与安装](skills/agent-superkit/references/app-cli-kit.skill.md)。
@@ -60,7 +62,7 @@ python3 -B agent-superkit/skills/agent-superkit/scripts/superkit.py sync --ref "
 
 ## 更新
 
-已安装的 Agent 在执行时调用本机副本，用 `~/.local/bin/agent-superkit source` 查看标签、提交及本机验收状态。版本升级由维护者执行 `agent-superkit sync --ref <新标签> --commit <完整提交>`。同步会验证标签指向指定提交，并保留已登记目录。构建未发布版本时可在开发检出目录使用 `install`。已存在的未受本工具管理目录或本地改动会保留并提示。
+已安装的 Agent 在执行时调用本机副本，用 `~/.local/bin/agent-superkit source` 核对标签、提交、独立入口和各已登记技能目录。变动路径列在 `mismatches`。版本升级由维护者执行 `agent-superkit sync --ref <新标签> --commit <完整提交>`。同步会验证标签指向指定提交，并保留已登记目录。构建未发布版本时可在开发检出目录使用 `install`。已存在的未受本工具管理目录或本地改动会保留并提示。
 
 从 v0.5.0 或更旧版本升级时，用上面的首次安装方式运行新标签内的 `sync`，以注册新增的独立技能及 CLI。
 
