@@ -22,6 +22,7 @@ from ai_tool_router import TOOL_IDS, add_arguments as add_route_arguments, route
 NAME = "agent-superkit"
 ROUTER = "ai-tool-router"
 SEARCH = "web-search-kit"
+APP_CLI = "app-cli-kit"
 ROOT = Path(__file__).resolve().parents[1]
 HOME = Path.home().resolve()
 STATE = HOME / ".local/share" / NAME
@@ -156,6 +157,8 @@ def install(args, bundle=ROOT, release=None, previous_roots=()):
         SEARCH: ({"SKILL.md": files["references/web-search-kit.skill.md"],
                   "providers.md": files["references/search-providers.md"],
                   "web_search_kit.py": files["scripts/web_search_kit.py"]}, "web_search_kit.py"),
+        APP_CLI: ({"SKILL.md": files["references/app-cli-kit.skill.md"],
+                   "app_cli_kit.py": files["scripts/app_cli_kit.py"]}, "app_cli_kit.py"),
     }
     roots = skill_roots(args, previous_roots)
     installed = {}
@@ -189,7 +192,7 @@ def install(args, bundle=ROOT, release=None, previous_roots=()):
                          "skill_roots": [str(path) for path in roots]})
     result = {"command": installed[NAME]["command"], "roots": installed[NAME]["roots"],
               "skill_sha256": hashlib.sha256(files["SKILL.md"]).hexdigest(),
-              "router": installed[ROUTER], "search": installed[SEARCH]}
+              "router": installed[ROUTER], "search": installed[SEARCH], "app_cli": installed[APP_CLI]}
     if release is not None:
         result["source"] = release
     if args.with_extensions:

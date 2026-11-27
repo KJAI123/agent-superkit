@@ -21,6 +21,7 @@ ROUTES = {
     "growth": ("first-party-report",),
     "source": ("official-source",),
     "search": ("web-search-kit", "web"),
+    "app-cli": ("app-cli-kit",),
     "community": ("existing-channel",),
     "publish": ("existing-channel",),
     "account": ("user-verification",),

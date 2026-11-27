@@ -11,6 +11,7 @@ description: 为当前任务从已知可用工具中选出一个工具和下一�
 
 ```sh
 ~/.local/bin/ai-tool-router signed-in --available webbridge,computer-use
+~/.local/bin/ai-tool-router app-cli --available app-cli-kit
 ```
 
 没有全局命令时直接运行本技能目录的 `python3 -B ai_tool_router.py`。`--help` 列出意图和工具 ID。已经在正确会话中可加 `--current`；写入任务传 `--effect write`，影响不明传 `--effect unknown`。用户指定工具和当前授权优先。

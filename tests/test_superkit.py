@@ -1,4 +1,5 @@
 import importlib.util
+import hashlib
 import json
 from argparse import Namespace
 from contextlib import redirect_stdout
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from unittest.mock import patch
 
 SKILL = Path(__file__).resolve().parents[1] / "skills/agent-superkit"
@@ -71,8 +73,32 @@ class InstallTest(unittest.TestCase):
         self.assertEqual(search["tool"], "keenable")
         self.assertTrue((self.home / ".agents/skills/web-search-kit/providers.md").is_file())
 
+    def test_independent_app_cli_inspects_manifest_without_extraction(self):
+        installed = self.successful("install")
+        command = Path(installed["app_cli"]["command"])
+        directories = installed["app_cli"]["roots"]
+        self.assertTrue(all((Path(row["skill"]) / "SKILL.md").is_file() for row in directories))
+        self.assertEqual(self.successful("plan", "inspect", script=command)["next"], "ready")
+        self.assertEqual(self.successful("plan", "document", script=command)["next"], "install-pinned-harness")
+        bundle = self.home / "fixture.vsix"
+        manifest = b'{"name":"demo","engines":{"vscode":"^1.95"},"scripts":{"install":"never-run"}}'
+        with zipfile.ZipFile(bundle, "w") as archive:
+            archive.writestr("extension/package.json", manifest)
+            archive.writestr("../not-extracted", b"fixture")
+        inspected = self.successful("inspect", bundle, script=command)
+        self.assertEqual(inspected["declared"], {"name": "demo", "engines.vscode": "^1.95"})
+        self.assertEqual(inspected["manifest_sha256"], hashlib.sha256(manifest).hexdigest())
+        self.assertFalse((self.home.parent / "not-extracted").exists())
+        alias = self.home / "alias.vsix"
+        alias.symlink_to(bundle)
+        self.assertNotEqual(self.invoke("inspect", alias, script=command).returncode, 0)
+        with zipfile.ZipFile(bundle, "w") as archive:
+            archive.writestr("extension/package.json", b"[]")
+        self.assertNotEqual(self.invoke("inspect", bundle, script=command).returncode, 0)
+
     def test_route_respects_surface_availability_and_current_tool(self):
         cases = (
+            ("app-cli", "app-cli-kit", "app-cli-kit", "ready", []),
             ("public-read", "web,http,computer-use", "web", "ready", []),
             ("public-read", "web,http", "http", "ready", ["--current", "http"]),
             ("public-read", "web", "web", "ready", ["--current", "http"]),
