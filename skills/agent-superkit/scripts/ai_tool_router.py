@@ -22,6 +22,7 @@ ROUTES = {
     "source": ("official-source",),
     "search": ("web-search-kit", "web"),
     "app-cli": ("app-cli-kit",),
+    "page-collection": ("page-collection",),
     "community": ("existing-channel",),
     "publish": ("existing-channel",),
     "account": ("user-verification",),

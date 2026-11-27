@@ -23,6 +23,7 @@ NAME = "agent-superkit"
 ROUTER = "ai-tool-router"
 SEARCH = "web-search-kit"
 APP_CLI = "app-cli-kit"
+COLLECTION = "page-collection"
 ROOT = Path(__file__).resolve().parents[1]
 HOME = Path.home().resolve()
 STATE = HOME / ".local/share" / NAME
@@ -158,6 +159,8 @@ def release_packages(files):
                   "web_search_kit.py": files["scripts/web_search_kit.py"]}, "web_search_kit.py"),
         APP_CLI: ({"SKILL.md": files["references/app-cli-kit.skill.md"],
                    "app_cli_kit.py": files["scripts/app_cli_kit.py"]}, "app_cli_kit.py"),
+        COLLECTION: ({"SKILL.md": files["references/page-collection.skill.md"],
+                      "page_collection.py": files["scripts/page_collection.py"]}, "page_collection.py"),
     }
 
 
@@ -196,7 +199,8 @@ def install(args, bundle=ROOT, release=None, previous_roots=()):
                          "skill_roots": [str(path) for path in roots]})
     result = {"command": installed[NAME]["command"], "roots": installed[NAME]["roots"],
               "skill_sha256": hashlib.sha256(files["SKILL.md"]).hexdigest(),
-              "router": installed[ROUTER], "search": installed[SEARCH], "app_cli": installed[APP_CLI]}
+              "router": installed[ROUTER], "search": installed[SEARCH], "app_cli": installed[APP_CLI],
+              "page_collection": installed[COLLECTION]}
     if release is not None:
         result["source"] = release
     if args.with_extensions:

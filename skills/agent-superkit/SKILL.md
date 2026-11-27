@@ -17,6 +17,7 @@ description: 为本机 Agent 安装和调用共享工作入口。适用于 Chrom
 - 增长意图 `seo`、`geo`、`growth`、`source`。需要取证口径时再读 [增长与取证](references/growth.md)。
 - 公开搜索意图 `search` 可调用独立的 `$web-search-kit`；按快搜、深研、中文、官方文档或已知页提取选择工具，再核查原始来源。需要接入时看 [搜索提供方与验收](references/search-providers.md)。
 - 本机应用意图 `app-cli` 调用独立的 `$app-cli-kit`；LibreOffice 用固定版 CLI-Anything，应用和扩展包用 REA 的只读清单核验流程。见 [本机应用与包分析](references/app-cli-kit.skill.md)。
+- 单页结构化取证用 `page-collection`，由 Kimi WebBridge 捕获公开页面，再用 Scrapling 抽取可复核字段。见 [网页采集](references/page-collection.skill.md)。
 - 运营意图 `community`、`publish`、`account`。实际运营和账号动作按 [运营与账号](references/operations.md)。
 
 首次接入用 `python3 -B scripts/superkit.py install`，或直接用本目录的 `python3 -B scripts/superkit.py route`。遇到依赖故障才用 `agent-superkit doctor`。只发送完成任务所需的数据，业务数据、会话与凭据留在各自环境。

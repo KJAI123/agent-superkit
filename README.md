@@ -60,11 +60,21 @@ python3 -B agent-superkit/skills/agent-superkit/scripts/superkit.py sync --ref "
 ~/.local/bin/app-cli-kit inspect /Applications/LibreOffice.app
 ```
 
+## 网页采集
+
+独立技能 `$page-collection` 把已授权公开页交给 Kimi WebBridge 回读，再用固定版 Scrapling 从本地证据提取字段。[安全范围、安装和命令](skills/agent-superkit/references/page-collection.skill.md)
+
+```sh
+~/.local/bin/ai-tool-router page-collection --available page-collection
+~/.local/bin/page-collection capture https://example.org/ --out ./capture
+~/.local/bin/page-collection extract ./capture/page.html --field 'title=title::text'
+```
+
 ## 更新
 
 已安装的 Agent 在执行时调用本机副本，用 `~/.local/bin/agent-superkit source` 核对标签、提交、独立入口和各已登记技能目录。变动路径列在 `mismatches`。版本升级由维护者执行 `agent-superkit sync --ref <新标签> --commit <完整提交>`。同步会验证标签指向指定提交，并保留已登记目录。构建未发布版本时可在开发检出目录使用 `install`。已存在的未受本工具管理目录或本地改动会保留并提示。
 
-从 v0.5.0 或更旧版本升级时，用上面的首次安装方式运行新标签内的 `sync`，以注册新增的独立技能及 CLI。
+从 v0.6.1 或更旧版本升级时，用上面的首次安装方式运行新标签内的 `sync`，以注册新增的独立技能及 CLI。
 
 新能力提供独立模块和明确的输入、输出，让 Agent 能直接调用；Superkit 复用该模块，保留已有入口。先运行 `python3 -B -m unittest discover -s tests -v`，涉及浏览器行为时再用隔离浏览器复测。扩展条目使用官方商店链接及可执行的回读验证。业务环境的登录态、运行数据和本机配置独立维护。
 
